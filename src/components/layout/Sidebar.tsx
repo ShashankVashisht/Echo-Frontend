@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { NavLink, useNavigate } from 'react-router-dom'
+import { NavLink, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Home, MessageSquare, Bell, User,
   ChevronDown, Plus, Search, PanelLeft,
@@ -8,6 +8,11 @@ import {
 } from 'lucide-react'
 import clsx from 'clsx'
 import { dbApi } from '../../lib/api'
+import {
+  DATABASE_ICONS,
+  DEFAULT_DATABASE_ICON,
+  DatabaseIconGlyph,
+} from '../common/DatabaseIcon'
 
 const NAV = [
   { to: '/',          icon: Home,           label: 'Home'      },
@@ -19,13 +24,6 @@ const NAV = [
 
 interface Db { id: string; title: string; iconValue?: string }
 interface SidebarProps { collapsed: boolean; onToggle: () => void }
-
-const ICONS = [
-  '✅','📋','📝','🗒️','📌','🎯','🚀','💼',
-  '📊','📈','🗓️','⚡','🔥','💡','🏆','🎨',
-  '🔧','📦','🌟','💎','🗂️','📁','⭐','🏗️',
-  '🧩','🌈','🎪','🔑','🛠️','📐','🎲','🧠',
-]
 
 // ── Tiny confirm dialog ────────────────────────────────────────────────────────
 function MiniConfirm({ message, onConfirm, onCancel }: {
@@ -118,7 +116,7 @@ function DbRow({ db, isActive, onSelect, onRenamed, onDeleted }: {
           'flex items-center gap-2 px-2 py-1.5 rounded text-sm w-full group cursor-pointer select-none',
           isActive ? 'bg-[#373737] text-[#e8e8e8]' : 'text-[#e8e8e8] hover:bg-[#2d2d2d]'
         )}>
-        <span className="text-base leading-none flex-shrink-0">{db.iconValue || '✅'}</span>
+        <DatabaseIconGlyph value={db.iconValue} size={16} />
 
         {renaming ? (
           <input
@@ -183,13 +181,15 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const [activeDbId, setActiveDbId] = useState<string | null>(null)
   const [creating, setCreating]         = useState(false)
   const [newTitle, setNewTitle]         = useState('')
-  const [newIcon, setNewIcon]           = useState('✅')
+  const [newIcon, setNewIcon]           = useState(DEFAULT_DATABASE_ICON)
   const [iconPickerOpen, setIconPickerOpen] = useState(false)
   const [iconPickerPos, setIconPickerPos]   = useState({ x: 0, y: 0 })
   const createInputRef  = useRef<HTMLInputElement>(null)
   const iconBtnRef      = useRef<HTMLButtonElement>(null)
   const iconPickerRef   = useRef<HTMLDivElement>(null)
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const selectedDbId = searchParams.get('db')
 
   // close icon picker on outside click
   useEffect(() => {
@@ -214,7 +214,7 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
 
   const startCreate = () => {
     setNewTitle('')
-    setNewIcon('✅')
+    setNewIcon(DEFAULT_DATABASE_ICON)
     setCreating(true)
     setIconPickerOpen(false)
     setPagesOpen(true)
@@ -232,7 +232,7 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
       const db: Db = res.data
       setDatabases((prev) => [...prev, db])
       setActiveDbId(db.id)
-      navigate('/tasks')
+      navigate(`/tasks?db=${encodeURIComponent(db.id)}`)
     } catch (err) { console.error(err) }
   }
 
@@ -241,14 +241,14 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
       .then((res) => {
         const dbs: Db[] = res.data || []
         setDatabases(dbs)
-        if (dbs.length > 0) setActiveDbId(dbs[0].id)
+        if (dbs.length > 0) setActiveDbId(selectedDbId || dbs[0].id)
       })
       .catch(() => {})
-  }, [])
+  }, [selectedDbId])
 
   const handleSelect = (db: Db) => {
     setActiveDbId(db.id)
-    navigate('/tasks')
+    navigate(`/tasks?db=${encodeURIComponent(db.id)}`)
   }
 
   const handleRenamed = (id: string, title: string) => {
@@ -271,8 +271,12 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
       {/* Workspace header */}
       <div className="flex items-center justify-between px-3 py-3 h-12">
         <button className="flex items-center gap-2 hover:bg-[#2d2d2d] rounded px-2 py-1 flex-1 min-w-0">
-          <div className="w-5 h-5 bg-gradient-to-br from-blue-500 to-blue-600 rounded flex-shrink-0 flex items-center justify-center">
-            <span className="text-white text-[10px] font-bold">E</span>
+          <div className="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center overflow-hidden">
+            <img
+              src="/android-chrome-192x192.png"
+              alt=""
+              className="w-full h-full object-contain"
+            />
           </div>
           <span className="text-sm font-medium text-[#e8e8e8] truncate">Echo's Space</span>
           <ChevronDown size={14} className="text-[#787878] flex-shrink-0" />
@@ -341,7 +345,7 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
                     title="Choose icon"
                     className="text-base leading-none rounded hover:bg-[#444] p-0.5 transition-colors flex-shrink-0"
                   >
-                    {newIcon}
+                    <DatabaseIconGlyph value={newIcon} size={16} />
                   </button>
                   <input
                     ref={createInputRef}
@@ -372,21 +376,22 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
                       Choose icon
                     </p>
                     <div className="grid grid-cols-8 gap-0.5">
-                      {ICONS.map((icon) => (
+                      {DATABASE_ICONS.map((icon) => (
                         <button
-                          key={icon}
+                          key={icon.value}
+                          title={icon.label}
                           onMouseDown={(e) => {
                             e.preventDefault()
-                            setNewIcon(icon)
+                            setNewIcon(icon.value)
                             setIconPickerOpen(false)
                             createInputRef.current?.focus()
                           }}
                           className={clsx(
-                            'text-base p-1 rounded hover:bg-[#373737] transition-colors leading-none',
-                            newIcon === icon && 'bg-[#373737]'
+                            'w-6 h-6 rounded flex items-center justify-center hover:bg-[#373737] transition-colors',
+                            newIcon === icon.value && 'bg-[#373737] ring-1 ring-[#2383e2]'
                           )}
                         >
-                          {icon}
+                          <DatabaseIconGlyph value={icon.value} size={15} />
                         </button>
                       ))}
                     </div>

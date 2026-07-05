@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
+import { useSearchParams } from 'react-router-dom'
 import {
   Star, Circle, User, Filter, ArrowUpDown, Search, ChevronDown, Plus, X,
   ExternalLink, Loader2, Database, Trash2, ArrowUp, ArrowDown, ChevronRight,
@@ -18,6 +19,11 @@ import { CSS } from '@dnd-kit/utilities'
 import { generateKeyBetween } from 'fractional-indexing'
 import clsx from 'clsx'
 import { dbApi, propertyApi, rowApi, cellApi } from '../lib/api'
+import {
+  DATABASE_ICONS,
+  DEFAULT_DATABASE_ICON,
+  DatabaseIconGlyph,
+} from '../components/common/DatabaseIcon'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface Property {
@@ -55,8 +61,6 @@ const TYPE_ICON: Record<string, React.ReactNode> = {
 
 const DEFAULT_COL_WIDTH = 180
 const NAME_COL_WIDTH    = 280
-
-const ICONS = ['✅','📋','📝','🗒️','📌','🎯','🚀','💼','📊','📈','🗓️','⚡','🔥','💡','🏆','🎨','🔧','📦','🌟','💎','🗂️','📁','⭐','🏗️','🧩','🌈','🎪','🔑','🛠️','📐','🎲','🧠']
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function getCellRawValue(cell?: Cell): any {
@@ -379,14 +383,14 @@ function IconPickerPopover({ x, y, selected, onSelect, onClose }: {
     <div ref={ref}
       style={{ position: 'fixed', top: y, left: x, zIndex: 9999 }}
       className="bg-[#252525] border border-[#3a3a3a] rounded-xl shadow-2xl p-2 w-[228px]">
-      <div className="grid grid-cols-8 gap-0.5">
-        {ICONS.map((icon) => (
-          <button key={icon} onMouseDown={(e) => { e.preventDefault(); onSelect(icon); onClose() }}
+      <div className="grid grid-cols-8 gap-1">
+        {DATABASE_ICONS.map((icon) => (
+          <button key={icon.value} title={icon.label} onMouseDown={(e) => { e.preventDefault(); onSelect(icon.value); onClose() }}
             className={clsx(
-              'w-7 h-7 rounded-lg text-lg flex items-center justify-center hover:bg-[#3a3a3a] transition-colors',
-              selected === icon && 'bg-[#2d2d2d] ring-1 ring-[#2383e2]'
+              'w-6 h-6 rounded-lg flex items-center justify-center hover:bg-[#3a3a3a] transition-colors',
+              selected === icon.value && 'bg-[#2d2d2d] ring-1 ring-[#2383e2]'
             )}>
-            {icon}
+            <DatabaseIconGlyph value={icon.value} size={15} />
           </button>
         ))}
       </div>
@@ -399,7 +403,7 @@ function IconPickerPopover({ x, y, selected, onSelect, onClose }: {
 function CreateDbModal({ onCreated, onClose }: { onCreated: (db: Db) => void; onClose: () => void }) {
   const [title, setTitle] = useState('')
   const [desc, setDesc] = useState('')
-  const [icon, setIcon] = useState('✅')
+  const [icon, setIcon] = useState(DEFAULT_DATABASE_ICON)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [iconPickerOpen, setIconPickerOpen] = useState(false)
@@ -453,7 +457,7 @@ function CreateDbModal({ onCreated, onClose }: { onCreated: (db: Db) => void; on
           <button ref={iconBtnRef} type="button" onClick={openIconPicker}
             title="Choose icon"
             className="w-16 h-16 rounded-2xl bg-[#2d2d2d] hover:bg-[#3a3a3a] border border-[#404040] flex items-center justify-center text-4xl transition-colors">
-            {icon}
+            <DatabaseIconGlyph value={icon} size={30} />
           </button>
         </div>
         {iconPickerOpen && (
@@ -768,6 +772,8 @@ function StatusGroup({ status, count, children }: { status: string; count: numbe
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function Tasks() {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const selectedDbId = searchParams.get('db')
   const [databases, setDatabases]   = useState<Db[]>([])
   const [activeDb, setActiveDb]     = useState<Db | null>(null)
   const [properties, setProperties] = useState<Property[]>([])
@@ -808,10 +814,21 @@ export default function Tasks() {
     dbApi.getAll().then((res) => {
       const dbs: Db[] = res.data || []
       setDatabases(dbs)
-      if (dbs.length > 0) setActiveDb(dbs[0])
-      else setLoading(false)
+      if (dbs.length === 0) setLoading(false)
     }).catch(() => setLoading(false))
   }, [])
+
+  useEffect(() => {
+    if (databases.length === 0) return
+    const nextDb = databases.find((db) => db.id === selectedDbId) || databases[0]
+    setActiveDb((current) => current?.id === nextDb.id ? current : nextDb)
+  }, [databases, selectedDbId])
+
+  const selectDatabase = (db: Db) => {
+    setActiveDb(db)
+    setSearchParams({ db: db.id })
+    setDbPickerOpen(false)
+  }
 
   // Load properties + rows on DB change
   useEffect(() => {
@@ -948,6 +965,8 @@ export default function Tasks() {
       const remaining = databases.filter((d) => d.id !== activeDb.id)
       setDatabases(remaining)
       setActiveDb(remaining[0] ?? null)
+      if (remaining[0]) setSearchParams({ db: remaining[0].id })
+      else setSearchParams({})
       setRows([]); setProperties([])
     } catch (err) { console.error(err) }
     finally { setDeletingDb(false) }
@@ -1052,7 +1071,7 @@ export default function Tasks() {
           className="flex items-center gap-2 px-5 py-2.5 bg-[#2383e2] hover:bg-[#1a72d4] text-white rounded-lg text-sm font-medium">
           <Plus size={16} /> New Database
         </button>
-        {showCreate && <CreateDbModal onCreated={(db) => { setDatabases([db]); setActiveDb(db); setShowCreate(false) }} onClose={() => setShowCreate(false)} />}
+        {showCreate && <CreateDbModal onCreated={(db) => { setDatabases([db]); selectDatabase(db); setShowCreate(false) }} onClose={() => setShowCreate(false)} />}
       </div>
     )
   }
@@ -1062,7 +1081,7 @@ export default function Tasks() {
 
       {/* ── Modals ── */}
       {showCreate && <CreateDbModal
-        onCreated={(db) => { setDatabases((p) => [...p, db]); setActiveDb(db); setShowCreate(false) }}
+        onCreated={(db) => { setDatabases((p) => [...p, db]); selectDatabase(db); setShowCreate(false) }}
         onClose={() => setShowCreate(false)} />}
 
       {(showAddProp || editProp) && activeDb && <PropertyModal
@@ -1095,8 +1114,8 @@ export default function Tasks() {
                 <div className="flex items-center gap-3">
                   <button ref={headerIconBtnRef} type="button" onClick={openHeaderIconPicker}
                     title="Change icon"
-                    className="w-10 h-10 rounded-xl bg-[#0f9453]/20 hover:bg-[#0f9453]/30 flex items-center justify-center text-2xl flex-shrink-0 transition-colors">
-                    {activeDb?.iconValue || '✅'}
+                    className="w-10 h-10 rounded-xl bg-[#2d2d2d] hover:bg-[#373737] flex items-center justify-center flex-shrink-0 transition-colors">
+                    <DatabaseIconGlyph value={activeDb?.iconValue} size={24} />
                   </button>
                   <input autoFocus
                     className="text-3xl font-bold text-[#e8e8e8] bg-transparent border-b-2 border-[#2383e2] outline-none min-w-[120px]"
@@ -1110,8 +1129,8 @@ export default function Tasks() {
                 <div className="group flex items-center gap-3 rounded-xl px-2 py-1.5 -mx-2 hover:bg-[#ffffff08] transition-colors">
                   <button ref={headerIconBtnRef} type="button" onClick={openHeaderIconPicker}
                     title="Change icon"
-                    className="w-10 h-10 rounded-xl bg-[#0f9453]/20 hover:bg-[#0f9453]/40 flex items-center justify-center text-2xl flex-shrink-0 transition-colors">
-                    {activeDb?.iconValue || '✅'}
+                    className="w-10 h-10 rounded-xl bg-[#2d2d2d] hover:bg-[#373737] flex items-center justify-center flex-shrink-0 transition-colors">
+                    <DatabaseIconGlyph value={activeDb?.iconValue} size={24} />
                   </button>
                   <button
                     onClick={() => setDbPickerOpen((o) => !o)}
@@ -1133,7 +1152,7 @@ export default function Tasks() {
               {headerIconPickerOpen && (
                 <IconPickerPopover
                   x={headerIconPickerPos.x} y={headerIconPickerPos.y}
-                  selected={activeDb?.iconValue || '✅'}
+                  selected={activeDb?.iconValue || DEFAULT_DATABASE_ICON}
                   onSelect={handleHeaderIconSelect}
                   onClose={() => setHeaderIconPickerOpen(false)}
                 />
@@ -1152,12 +1171,12 @@ export default function Tasks() {
                       const isActive = activeDb?.id === db.id
                       return (
                         <button key={db.id}
-                          onClick={() => { setActiveDb(db); setDbPickerOpen(false) }}
+                          onClick={() => selectDatabase(db)}
                           className={clsx(
                             'flex items-center gap-2.5 w-full px-3 py-2 text-sm transition-colors',
                             isActive ? 'bg-[#2d2d2d] text-[#e8e8e8]' : 'text-[#a0a0a0] hover:bg-[#2a2a2a] hover:text-[#e8e8e8]'
                           )}>
-                          <span className="text-base leading-none flex-shrink-0">{db.iconValue || '📋'}</span>
+                          <DatabaseIconGlyph value={db.iconValue} size={16} />
                           <span className="flex-1 text-left truncate font-medium">{db.title}</span>
                           {isActive && (
                             <span className="w-1.5 h-1.5 rounded-full bg-[#2383e2] flex-shrink-0" />
