@@ -73,6 +73,7 @@ export const chatApi = {
       method: 'POST',
       body: JSON.stringify({ content: message, chatHistory }),
     }),
+  getHistory: () => request<{ data: { messages: any[] } }>('/chat/history'),
 }
 
 // ── Task Databases ─────────────────────────────────────────────────────────

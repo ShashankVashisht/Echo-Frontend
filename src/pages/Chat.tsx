@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Send, Plus, Mic, Bell, Loader2 } from 'lucide-react'
+import { Send, Plus, Mic, Bell, Loader2, MessageCircleMore } from 'lucide-react'
 import clsx from 'clsx'
 import { chatApi } from '../lib/api'
 
@@ -10,14 +10,7 @@ interface Msg {
   timestamp: string
 }
 
-const INITIAL: Msg[] = [
-  {
-    id: '0',
-    role: 'assistant',
-    content: "Hey! I'm Echo AI. I can create reminders, check your tasks, and more. Try saying something like 'remind me every day at 9am to check emails'.",
-    timestamp: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-  },
-]
+const INITIAL: Msg[] = []
 
 const SUGGESTIONS = [
   'Remind me tomorrow at 2pm about the meeting',
@@ -25,6 +18,15 @@ const SUGGESTIONS = [
   'Remind me every Monday at 10am',
   'Cancel my daily reminder',
 ]
+
+const Avatar = ({ size = 'md' }: { size?: 'sm' | 'md' }) => {
+  const sizeClass = size === 'md' ? 'w-8 h-8' : 'w-7 h-7'
+  return (
+    <div className={`${sizeClass} rounded-full flex-shrink-0 flex items-center justify-center bg-[#2d2d2d] text-[#e8e8e8]`}>
+      <MessageCircleMore size={size === 'md' ? 16 : 14} />
+    </div>
+  )
+}
 
 export default function Chat() {
   const [messages, setMessages] = useState<Msg[]>(INITIAL)
@@ -35,6 +37,33 @@ export default function Chat() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, isTyping])
+
+  useEffect(() => {
+    const loadHistory = async () => {
+      try {
+        const res = await chatApi.getHistory()
+        const historyMessages: Msg[] = (res.data?.messages ?? []).map((m: any, index: number) => ({
+          id: `${m.timestamp || index}`,
+          role: m.role === 'assistant' ? 'assistant' : 'user',
+          content: m.content ?? '',
+          timestamp: m.timestamp ? new Date(m.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '',
+        }))
+
+        if (historyMessages.length) {
+          setMessages((prev) => {
+            if (prev.length === 0) {
+            return historyMessages
+          }
+          return prev
+          })
+        }
+      } catch (err) {
+        console.error('Failed to load chat history', err)
+      }
+    }
+
+    loadHistory()
+  }, [])
 
   const send = async (text?: string) => {
     const content = (text || input).trim()
@@ -47,7 +76,6 @@ export default function Chat() {
       timestamp: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
     }
 
-    // Build chat history from current messages (exclude the initial welcome)
     const history = messages
       .filter((m) => m.id !== '0')
       .map((m) => ({ role: m.role, content: m.content }))
@@ -88,9 +116,9 @@ export default function Chat() {
     <div className="h-screen flex flex-col bg-[#191919]">
       {/* Header */}
       <div className="border-b border-[#2d2d2d] px-6 py-3 flex items-center gap-3">
-        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white text-sm font-bold">E</div>
+        <Avatar size="md" />
         <div>
-          <div className="text-sm font-semibold text-[#e8e8e8]">Echo AI</div>
+          <div className="text-sm font-semibold text-[#e8e8e8]">Chat</div>
           <div className="text-xs text-[#0f9453]">● Online</div>
         </div>
         <div className="ml-auto flex items-center gap-2">
@@ -108,9 +136,6 @@ export default function Chat() {
       <div className="flex-1 overflow-auto px-6 py-4 space-y-4">
         {messages.map((msg) => (
           <div key={msg.id} className={clsx('flex gap-3', msg.role === 'user' ? 'justify-end' : 'justify-start')}>
-            {msg.role === 'assistant' && (
-              <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex-shrink-0 flex items-center justify-center text-white text-xs font-bold mt-1">E</div>
-            )}
             <div className="max-w-[72%] space-y-1">
               <div className={clsx(
                 'px-4 py-2.5 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap',
@@ -129,7 +154,7 @@ export default function Chat() {
 
         {isTyping && (
           <div className="flex gap-3">
-            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex-shrink-0 flex items-center justify-center text-white text-xs font-bold">E</div>
+            <Avatar size="sm" />
             <div className="px-4 py-3 bg-[#2d2d2d] rounded-2xl rounded-tl-sm">
               <div className="flex gap-1 items-center">
                 {[0, 1, 2].map((i) => (
@@ -143,7 +168,7 @@ export default function Chat() {
         <div ref={bottomRef} />
       </div>
 
-      {/* Suggestions (only at start) */}
+      {/* Suggestions */}
       {messages.length < 3 && (
         <div className="px-6 py-2 flex gap-2 flex-wrap">
           {SUGGESTIONS.map((s) => (
