@@ -1,14 +1,38 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../stores/authStore'
-import { authApi } from '../../lib/api'
-import clsx from 'clsx'
 
-type Mode = 'login' | 'otp-send' | 'otp-verify' | 'register'
+type Mode = 'login' | 'otp-send' | 'otp-verify' | 'register' | 'register-verify' | 'verify-phone'
+
+// Validation utilities
+const validate = {
+  email: (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email),
+  phone: (phone: string) => phone.replace(/\D/g, '').length >= 10,
+  password: (pwd: string) => pwd.length >= 6,
+  otp: (otp: string) => /^\d{6}$/.test(otp),
+  name: (name: string) => name.trim().length >= 2,
+}
+
+const getValidationError = (field: string, value: string): string | null => {
+  switch (field) {
+    case 'name':
+      return value.trim().length < 2 ? 'Name must be at least 2 characters' : null
+    case 'email':
+      return !validate.email(value) ? 'Enter a valid email address' : null
+    case 'phone':
+      return !validate.phone(value) ? 'Phone must be at least 10 digits' : null
+    case 'password':
+      return !validate.password(value) ? 'Password must be at least 6 characters' : null
+    case 'otp':
+      return !validate.otp(value) ? 'OTP must be exactly 6 digits' : null
+    default:
+      return null
+  }
+}
 
 export default function Login() {
   const navigate = useNavigate()
-  const { login, loginWithOtp, register, isLoading, error, clearError } = useAuthStore()
+  const { login, loginWithOtp, register, verifyNumber, generateOtp, isLoading, error, clearError } = useAuthStore()
 
   const [mode, setMode] = useState<Mode>('login')
   const [phone, setPhone] = useState('')
@@ -17,45 +41,177 @@ export default function Login() {
   const [otp, setOtp] = useState('')
   const [name, setName] = useState('')
   const [localErr, setLocalErr] = useState('')
+  const [validationErr, setValidationErr] = useState('')
+  const [verifyPhoneOtpSent, setVerifyPhoneOtpSent] = useState(false)
 
-  const err = localErr || error
+  const err = localErr || error || validationErr
 
+  const resetForm = () => {
+    setPhone('')
+    setEmail('')
+    setPassword('')
+    setOtp('')
+    setName('')
+    setVerifyPhoneOtpSent(false)
+    clearError()
+    setLocalErr('')
+    setValidationErr('')
+  }
+
+  // LOGIN
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-    clearError(); setLocalErr('')
+    setValidationErr('')
+    clearError()
+    setLocalErr('')
+
+    if (!validate.phone(phone)) {
+      setValidationErr('Phone must be at least 10 digits')
+      return
+    }
+    if (!validate.password(password)) {
+      setValidationErr('Password must be at least 6 characters')
+      return
+    }
+
     try {
       await login(phone, password)
       navigate('/')
     } catch {}
   }
 
-  const handleSendOtp = async (e: React.FormEvent) => {
+  // OTP LOGIN - SEND
+  const handleSendOtpLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-    clearError(); setLocalErr('')
+    setValidationErr('')
+    clearError()
+    setLocalErr('')
+
+    if (!validate.phone(phone)) {
+      setValidationErr('Phone must be at least 10 digits')
+      return
+    }
+
     try {
-      await authApi.sendOtp(phone)
+      await generateOtp(phone)
+      setOtp('')
       setMode('otp-verify')
     } catch (err: any) {
       setLocalErr(err.message)
     }
   }
 
-  const handleOtpLogin = async (e: React.FormEvent) => {
+  // OTP LOGIN - VERIFY
+  const handleVerifyOtpLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-    clearError(); setLocalErr('')
+    setValidationErr('')
+    clearError()
+    setLocalErr('')
+
+    if (!validate.otp(otp)) {
+      setValidationErr('OTP must be exactly 6 digits')
+      return
+    }
+
     try {
       await loginWithOtp(phone, otp)
       navigate('/')
     } catch {}
   }
 
+  // REGISTER
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault()
-    clearError(); setLocalErr('')
+    setValidationErr('')
+    clearError()
+    setLocalErr('')
+
+    if (!validate.name(name)) {
+      setValidationErr('Name must be at least 2 characters')
+      return
+    }
+    if (!validate.phone(phone)) {
+      setValidationErr('Phone must be at least 10 digits')
+      return
+    }
+    if (!validate.email(email)) {
+      setValidationErr('Enter a valid email address')
+      return
+    }
+    if (!validate.password(password)) {
+      setValidationErr('Password must be at least 6 characters')
+      return
+    }
+
     try {
       await register(name, email, password, phone)
-      navigate('/')
-    } catch {}
+      setOtp('')
+      setMode('register-verify')
+    } catch (err: any) {
+      setLocalErr(err.message)
+    }
+  }
+
+  // REGISTER VERIFY
+  const handleVerifyRegister = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setValidationErr('')
+    clearError()
+    setLocalErr('')
+
+    if (!validate.otp(otp)) {
+      setValidationErr('OTP must be exactly 6 digits')
+      return
+    }
+
+    try {
+      await verifyNumber(phone, otp)
+      resetForm()
+      setMode('login')
+    } catch (err: any) {
+      setLocalErr(err.message)
+    }
+  }
+
+  // VERIFY PHONE (for unverified users)
+  const handleSendVerifyPhoneOtp = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setValidationErr('')
+    clearError()
+    setLocalErr('')
+
+    if (!validate.phone(phone)) {
+      setValidationErr('Phone must be at least 10 digits')
+      return
+    }
+
+    try {
+      await generateOtp(phone)
+      setOtp('')
+      setVerifyPhoneOtpSent(true)
+    } catch (err: any) {
+      setLocalErr(err.message)
+    }
+  }
+
+  const handleVerifyPhoneOtp = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setValidationErr('')
+    clearError()
+    setLocalErr('')
+
+    if (!validate.otp(otp)) {
+      setValidationErr('OTP must be exactly 6 digits')
+      return
+    }
+
+    try {
+      await verifyNumber(phone, otp)
+      resetForm()
+      setMode('login')
+    } catch (err: any) {
+      setLocalErr(err.message)
+    }
   }
 
   return (
@@ -73,13 +229,17 @@ export default function Login() {
           {/* Title */}
           <h1 className="text-xl font-semibold text-[#e8e8e8] mb-1 text-center">
             {mode === 'register' ? 'Create your account' :
+             mode === 'register-verify' ? 'Verify your phone' :
              mode === 'otp-send' ? 'Sign in with OTP' :
              mode === 'otp-verify' ? 'Enter your OTP' :
+             mode === 'verify-phone' ? 'Verify your phone' :
              'Sign in to Echo'}
           </h1>
           <p className="text-sm text-[#787878] text-center mb-6">
             {mode === 'register' ? 'Start managing your work in one place' :
+             mode === 'register-verify' ? `We sent a code to ${phone}` :
              mode === 'otp-verify' ? `We sent a code to ${phone}` :
+             mode === 'verify-phone' ? 'Complete your phone verification to access your account' :
              'Your all-in-one workspace'}
           </p>
 
@@ -90,11 +250,11 @@ export default function Login() {
             </div>
           )}
 
-          {/* Login form */}
+          {/* LOGIN FORM */}
           {mode === 'login' && (
             <form onSubmit={handleLogin} className="space-y-4">
-              <Field label="Mobile Number" type="tel" value={phone} onChange={setPhone} placeholder="+91 9999999999" />
-              <Field label="Password" type="password" value={password} onChange={setPassword} placeholder="••••••••" />
+              <Field label="Mobile Number" type="tel" value={phone} onChange={setPhone} placeholder="+91 9999999999" error={getValidationError('phone', phone)} />
+              <Field label="Password" type="password" value={password} onChange={setPassword} placeholder="••••••••" error={getValidationError('password', password)} />
               <button type="submit" disabled={isLoading} className="w-full py-2.5 bg-[#2383e2] hover:bg-[#1a72d4] text-white rounded-lg font-medium text-sm transition disabled:opacity-50">
                 {isLoading ? 'Signing in...' : 'Sign in'}
               </button>
@@ -103,46 +263,98 @@ export default function Login() {
                 <span className="text-xs text-[#787878]">or</span>
                 <div className="flex-1 border-t border-[#333]" />
               </div>
-              <button type="button" onClick={() => { clearError(); setLocalErr(''); setMode('otp-send') }}
-                className="w-full py-2.5 border border-[#404040] hover:bg-[#2d2d2d] text-[#e8e8e8] rounded-lg text-sm transition">
+              <button type="button" onClick={() => { resetForm(); setMode('otp-send') }} className="w-full py-2.5 border border-[#404040] hover:bg-[#2d2d2d] text-[#e8e8e8] rounded-lg text-sm transition">
                 Sign in with OTP
+              </button>
+              <button type="button" onClick={() => { resetForm(); setMode('verify-phone') }} className="w-full text-xs text-[#2383e2] hover:underline text-center py-2">
+                Verify your phone number?
               </button>
             </form>
           )}
 
-          {/* OTP send form */}
+          {/* OTP SEND FORM */}
           {mode === 'otp-send' && (
-            <form onSubmit={handleSendOtp} className="space-y-4">
-              <Field label="Mobile Number" type="tel" value={phone} onChange={setPhone} placeholder="+91 9999999999" />
+            <form onSubmit={handleSendOtpLogin} className="space-y-4">
+              <Field label="Mobile Number" type="tel" value={phone} onChange={setPhone} placeholder="+91 9999999999" error={getValidationError('phone', phone)} />
               <button type="submit" disabled={isLoading} className="w-full py-2.5 bg-[#2383e2] hover:bg-[#1a72d4] text-white rounded-lg font-medium text-sm transition disabled:opacity-50">
                 {isLoading ? 'Sending...' : 'Send OTP'}
               </button>
+              <button type="button" onClick={() => { resetForm(); setMode('login') }} className="w-full text-xs text-[#787878] hover:text-[#e8e8e8] transition py-2">
+                Back to login
+              </button>
             </form>
           )}
 
-          {/* OTP verify form */}
+          {/* OTP VERIFY FORM */}
           {mode === 'otp-verify' && (
-            <form onSubmit={handleOtpLogin} className="space-y-4">
-              <Field label="OTP Code" type="text" value={otp} onChange={setOtp} placeholder="Enter 6-digit code" />
+            <form onSubmit={handleVerifyOtpLogin} className="space-y-4">
+              <Field label="OTP Code" type="text" value={otp} onChange={setOtp} placeholder="Enter 6-digit code" error={getValidationError('otp', otp)} maxLength={6} />
               <button type="submit" disabled={isLoading} className="w-full py-2.5 bg-[#2383e2] hover:bg-[#1a72d4] text-white rounded-lg font-medium text-sm transition disabled:opacity-50">
                 {isLoading ? 'Verifying...' : 'Verify & Sign in'}
               </button>
-              <button type="button" onClick={() => setMode('otp-send')}
-                className="w-full text-xs text-[#787878] hover:text-[#e8e8e8] transition">
-                ← Resend OTP
+              <button type="button" onClick={() => { setOtp(''); setMode('otp-send') }} className="w-full text-xs text-[#787878] hover:text-[#e8e8e8] transition py-2">
+                Resend OTP
               </button>
             </form>
           )}
 
-          {/* Register form */}
+          {/* REGISTER FORM */}
           {mode === 'register' && (
             <form onSubmit={handleRegister} className="space-y-4">
-              <Field label="Full Name" type="text" value={name} onChange={setName} placeholder="Shashank Vashisht" />
-              <Field label="Mobile Number" type="tel" value={phone} onChange={setPhone} placeholder="+91 9999999999" />
-              <Field label="Email" type="email" value={email} onChange={setEmail} placeholder="you@example.com" />
-              <Field label="Password" type="password" value={password} onChange={setPassword} placeholder="••••••••" />
+              <Field label="Full Name" type="text" value={name} onChange={setName} placeholder="John Doe" error={getValidationError('name', name)} />
+              <Field label="Mobile Number" type="tel" value={phone} onChange={setPhone} placeholder="+91 9999999999" error={getValidationError('phone', phone)} />
+              <Field label="Email" type="email" value={email} onChange={setEmail} placeholder="you@example.com" error={getValidationError('email', email)} />
+              <Field label="Password" type="password" value={password} onChange={setPassword} placeholder="••••••••" error={getValidationError('password', password)} />
               <button type="submit" disabled={isLoading} className="w-full py-2.5 bg-[#2383e2] hover:bg-[#1a72d4] text-white rounded-lg font-medium text-sm transition disabled:opacity-50">
                 {isLoading ? 'Creating account...' : 'Create account'}
+              </button>
+            </form>
+          )}
+
+          {/* REGISTER VERIFY FORM */}
+          {mode === 'register-verify' && (
+            <form onSubmit={handleVerifyRegister} className="space-y-4">
+              <div className="rounded-lg border border-[#2d2d2d] bg-[#2a2a2a] p-3 text-sm text-[#e8e8e8]">
+                We sent a verification code to <span className="text-[#2383e2]">{phone}</span>
+              </div>
+              <Field label="OTP Code" type="text" value={otp} onChange={setOtp} placeholder="Enter 6-digit code" error={getValidationError('otp', otp)} maxLength={6} />
+              <button type="submit" disabled={isLoading} className="w-full py-2.5 bg-[#2383e2] hover:bg-[#1a72d4] text-white rounded-lg font-medium text-sm transition disabled:opacity-50">
+                {isLoading ? 'Verifying...' : 'Verify & Complete'}
+              </button>
+              <button type="button" onClick={() => { setPhone(''); setOtp(''); setMode('register') }} className="w-full text-xs text-[#787878] hover:text-[#e8e8e8] transition py-2">
+                Back
+              </button>
+            </form>
+          )}
+
+          {/* VERIFY PHONE FORM - SEND OTP */}
+          {mode === 'verify-phone' && !verifyPhoneOtpSent && (
+            <form onSubmit={handleSendVerifyPhoneOtp} className="space-y-4">
+              <p className="text-sm text-[#787878] mb-4">
+                Enter your phone number to receive a verification code and complete your account setup.
+              </p>
+              <Field label="Mobile Number" type="tel" value={phone} onChange={setPhone} placeholder="+91 9999999999" error={getValidationError('phone', phone)} />
+              <button type="submit" disabled={isLoading} className="w-full py-2.5 bg-[#2383e2] hover:bg-[#1a72d4] text-white rounded-lg font-medium text-sm transition disabled:opacity-50">
+                {isLoading ? 'Sending...' : 'Send OTP'}
+              </button>
+              <button type="button" onClick={() => { resetForm(); setMode('login') }} className="w-full text-xs text-[#787878] hover:text-[#e8e8e8] transition py-2">
+                Back to login
+              </button>
+            </form>
+          )}
+
+          {/* VERIFY PHONE FORM - VERIFY OTP */}
+          {mode === 'verify-phone' && verifyPhoneOtpSent && (
+            <form onSubmit={handleVerifyPhoneOtp} className="space-y-4">
+              <div className="rounded-lg border border-[#2d2d2d] bg-[#2a2a2a] p-3 text-sm text-[#e8e8e8]">
+                We sent a verification code to <span className="text-[#2383e2]">{phone}</span>
+              </div>
+              <Field label="OTP Code" type="text" value={otp} onChange={setOtp} placeholder="Enter 6-digit code" error={getValidationError('otp', otp)} maxLength={6} />
+              <button type="submit" disabled={isLoading} className="w-full py-2.5 bg-[#2383e2] hover:bg-[#1a72d4] text-white rounded-lg font-medium text-sm transition disabled:opacity-50">
+                {isLoading ? 'Verifying...' : 'Verify & Complete'}
+              </button>
+              <button type="button" onClick={() => { setOtp(''); setVerifyPhoneOtpSent(false) }} className="w-full text-xs text-[#787878] hover:text-[#e8e8e8] transition py-2">
+                Resend OTP
               </button>
             </form>
           )}
@@ -151,11 +363,11 @@ export default function Login() {
           <p className="mt-6 text-center text-sm text-[#787878]">
             {mode === 'register' ? (
               <>Already have an account?{' '}
-                <button onClick={() => { clearError(); setLocalErr(''); setMode('login') }} className="text-[#2383e2] hover:underline">Sign in</button>
+                <button type="button" onClick={() => { resetForm(); setMode('login') }} className="text-[#2383e2] hover:underline">Sign in</button>
               </>
             ) : (
               <>Don't have an account?{' '}
-                <button onClick={() => { clearError(); setLocalErr(''); setMode('register') }} className="text-[#2383e2] hover:underline">Sign up</button>
+                <button type="button" onClick={() => { resetForm(); setMode('register') }} className="text-[#2383e2] hover:underline">Sign up</button>
               </>
             )}
           </p>
@@ -165,9 +377,17 @@ export default function Login() {
   )
 }
 
-function Field({ label, type, value, onChange, placeholder }: {
-  label: string; type: string; value: string; onChange: (v: string) => void; placeholder: string
-}) {
+interface FieldProps {
+  label: string
+  type: string
+  value: string
+  onChange: (v: string) => void
+  placeholder: string
+  error?: string | null
+  maxLength?: number
+}
+
+function Field({ label, type, value, onChange, placeholder, error, maxLength }: FieldProps) {
   return (
     <div>
       <label className="block text-xs text-[#787878] mb-1.5 font-medium">{label}</label>
@@ -176,9 +396,12 @@ function Field({ label, type, value, onChange, placeholder }: {
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        required
-        className="w-full px-3 py-2.5 bg-[#2d2d2d] border border-[#404040] rounded-lg text-sm text-[#e8e8e8] placeholder-[#505050] outline-none focus:border-[#2383e2] transition"
+        maxLength={maxLength}
+        className={`w-full px-3 py-2.5 bg-[#2d2d2d] border rounded-lg text-sm text-[#e8e8e8] placeholder-[#505050] outline-none focus:border-[#2383e2] transition ${
+          error ? 'border-[#eb5757]' : 'border-[#404040]'
+        }`}
       />
+      {error && <p className="text-xs text-[#eb5757] mt-1">{error}</p>}
     </div>
   )
 }

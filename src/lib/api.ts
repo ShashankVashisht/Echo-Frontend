@@ -25,28 +25,46 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
 // ── Auth ────────────────────────────────────────────────────────────────────
 export const authApi = {
-  login: (phone: string, password: string) =>
-    request<{ data: { token: string; user: any } }>('/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({ phone, password }),
-    }),
-
   register: (name: string, email: string, password: string, phone: string) =>
-    request<{ data: { token: string; user: any } }>('/auth/register', {
+    request<{ success: true; message: string; data: any }>('/auth/register', {
       method: 'POST',
       body: JSON.stringify({ name, email, password, phone }),
     }),
 
-  sendOtp: (phone: string) =>
-    request<{ data: any }>('/auth/forgot-password', {
+  verifyNumber: (phone: string, otp: string) =>
+    request<{ success: true; message: string; data: any }>('/auth/verify-number', {
+      method: 'POST',
+      body: JSON.stringify({ phone, otp }),
+    }),
+
+  login: (phone: string, password: string) =>
+    request<{ success: true; message: string; data: { token: string; user: any } }>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ phone, password }),
+    }),
+
+  generateOtp: (phone: string) =>
+    request<{ success: true; message: string }>('/auth/generate-otp', {
       method: 'POST',
       body: JSON.stringify({ phone }),
     }),
 
   loginWithOtp: (phone: string, otp: string) =>
-    request<{ data: { token: string; user: any } }>('/auth/login-otp', {
+    request<{ success: true; message: string; data: { token: string; user: any } }>('/auth/login-otp', {
       method: 'POST',
       body: JSON.stringify({ phone, otp }),
+    }),
+
+  forgotPassword: (phone: string) =>
+    request<{ success: true; message: string }>('/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ phone }),
+    }),
+
+  resetPassword: (phone: string, otp: string, newPassword: string) =>
+    request<{ success: true; message: string; data: any }>('/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ phone, otp, newPassword }),
     }),
 }
 
