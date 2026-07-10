@@ -14,6 +14,8 @@ const validate = {
 }
 
 const getValidationError = (field: string, value: string): string | null => {
+  if (!value) return null;
+
   switch (field) {
     case 'name':
       return value.trim().length < 2 ? 'Name must be at least 2 characters' : null
@@ -83,7 +85,13 @@ export default function Login() {
     try {
       await login(fullPhone, password)
       navigate('/')
-    } catch { }
+    } catch (err: any) {
+      if (err?.response?.data?.code === 'PHONE_NOT_VERIFIED') {
+        clearError()
+        setMode('verify-phone')
+        return
+      }
+    }
   }
 
   // OTP LOGIN - SEND
