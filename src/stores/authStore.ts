@@ -15,7 +15,7 @@ interface AuthStore {
   isLoading: boolean
   error: string | null
 
-  register: (name: string, email: string, password: string, phone: string) => Promise<void>
+  register: (name: string, email: string, password: string, phone: string, timezone?: string) => Promise<void>
   verifyNumber: (phone: string, otp: string) => Promise<void>
   login: (phone: string, password: string) => Promise<void>
   generateOtp: (phone: string) => Promise<void>
@@ -33,10 +33,10 @@ export const useAuthStore = create<AuthStore>((set) => ({
   isLoading: false,
   error: null,
 
-  register: async (name, email, password, phone) => {
+  register: async (name, email, password, phone, timezone) => {
     set({ isLoading: true, error: null })
     try {
-      await authApi.register(name, email, password, phone)
+      await authApi.register(name, email, password, phone, timezone)
       set({ isLoading: false })
     } catch (err: any) {
       set({ isLoading: false, error: err.message || 'Registration failed' })
